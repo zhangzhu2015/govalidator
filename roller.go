@@ -1,6 +1,7 @@
 package govalidator
 
 import (
+	"database/sql/driver"
 	"reflect"
 	"strings"
 )
@@ -86,6 +87,22 @@ func (r *roller) push(key string, val interface{}) bool {
 	return true
 }
 
+// isValuer check the filed implement driver.Valuer or not
+func isValuer(field reflect.Value) (driver.Valuer, bool) {
+	var fieldRaw interface{}
+	fieldRaw = field.Interface()
+	if scanner, ok := fieldRaw.(driver.Valuer); ok {
+		return scanner, ok
+	}
+	if field.CanAddr() {
+		fieldRaw = field.Addr().Interface()
+	}
+	if scanner, ok := fieldRaw.(driver.Valuer); ok {
+		return scanner, ok
+	}
+	return nil, false
+}
+
 // traverseStruct through all structs and add it to root
 func (r *roller) traverseStruct(iface interface{}) {
 	ifv := reflect.ValueOf(iface)
@@ -124,8 +141,12 @@ func (r *roller) traverseStruct(iface interface{}) {
 				case "govalidator.Bool":
 					r.push(typeName, v.Interface())
 				default:
-					r.typeName = ift.Name()
-					r.traverseStruct(v.Interface())
+					if _, ok := isValuer(v); ok {
+						r.push(typeName, v.Interface())
+					} else {
+						r.typeName = ift.Name()
+						r.traverseStruct(v.Interface())
+					}
 				}
 			}
 		case reflect.Map:
